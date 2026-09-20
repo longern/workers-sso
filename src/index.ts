@@ -5,8 +5,8 @@ import { oauthProvider } from "@better-auth/oauth-provider";
 interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
-  ROOT_DOMAIN: string;
-  BETTER_AUTH_URL: string;
+  ROOT_DOMAIN?: string;
+  BETTER_AUTH_URL?: string;
   BETTER_AUTH_SECRET: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
@@ -18,8 +18,84 @@ interface Env {
 
 type Provider = { id: string; label: string };
 
-function issuerFor(env: Env) {
-  return new URL("/api/auth", env.BETTER_AUTH_URL).href.replace(/\/$/, "");
+const SHARED_PLATFORM_SUFFIXES = [
+  "workers.dev",
+  "pages.dev",
+  "github.io",
+  "gitlab.io",
+  "netlify.app",
+  "vercel.app",
+  "web.app",
+  "firebaseapp.com",
+];
+
+const MULTI_PART_TLDS = new Set([
+  "co.uk",
+  "org.uk",
+  "ac.uk",
+  "gov.uk",
+  "me.uk",
+  "co.jp",
+  "or.jp",
+  "ne.jp",
+  "ac.jp",
+  "com.au",
+  "net.au",
+  "org.au",
+  "edu.au",
+  "co.nz",
+  "org.nz",
+  "net.nz",
+  "com.br",
+  "net.br",
+  "org.br",
+  "co.in",
+  "com.in",
+  "net.in",
+  "org.in",
+  "com.cn",
+  "net.cn",
+  "org.cn",
+  "com.hk",
+  "com.sg",
+  "co.kr",
+  "com.tw",
+  "co.za",
+  "com.mx",
+  "com.ar",
+]);
+
+function isIpHost(host: string) {
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.startsWith("[");
+}
+
+function rootDomainFromHost(host: string): string | undefined {
+  const h = host.trim().replace(/\.$/, "").toLowerCase();
+  if (!h || h === "localhost" || h.endsWith(".localhost") || isIpHost(h)) {
+    return undefined;
+  }
+  for (const suffix of SHARED_PLATFORM_SUFFIXES) {
+    if (h === suffix || h.endsWith("." + suffix)) return undefined;
+  }
+  const parts = h.split(".");
+  if (parts.length < 2) return undefined;
+  const last2 = parts.slice(-2).join(".");
+  if (MULTI_PART_TLDS.has(last2)) {
+    return parts.length <= 3 ? h : parts.slice(1).join(".");
+  }
+  return parts.length === 2 ? h : parts.slice(1).join(".");
+}
+
+function siteFrom(env: Env, request: Request) {
+  const url = new URL(request.url);
+  const origin = (env.BETTER_AUTH_URL || url.origin).replace(/\/$/, "");
+  const host = new URL(origin).hostname;
+  const root = env.ROOT_DOMAIN || rootDomainFromHost(host);
+  return { url, origin, host, root };
+}
+
+function issuerFor(origin: string) {
+  return new URL("/api/auth", origin).href.replace(/\/$/, "");
 }
 
 function providersFor(env: Env): Provider[] {
@@ -41,14 +117,14 @@ function onRootDomain(host: string, root: string) {
 }
 
 function authFor(env: Env, request: Request) {
-  const url = new URL(request.url);
-  const issuer = issuerFor(env);
+  const { url, origin, host, root } = siteFrom(env, request);
+  const issuer = issuerFor(origin);
   const socialProviders: Record<string, any> = {};
 
   if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
     socialProviders.google = {
       clientId: env.GOOGLE_CLIENT_ID,
-      clientSecret: env.GOOGLE_CLIENT_SECRET
+      clientSecret: env.GOOGLE_CLIENT_SECRET,
     };
   }
 
@@ -56,36 +132,36 @@ function authFor(env: Env, request: Request) {
     socialProviders.microsoft = {
       clientId: env.MICROSOFT_CLIENT_ID,
       clientSecret: env.MICROSOFT_CLIENT_SECRET,
-      tenantId: "common"
+      tenantId: "common",
     };
   }
 
   if (env.TWITTER_CLIENT_ID && env.TWITTER_CLIENT_SECRET) {
     socialProviders.twitter = {
       clientId: env.TWITTER_CLIENT_ID,
-      clientSecret: env.TWITTER_CLIENT_SECRET
+      clientSecret: env.TWITTER_CLIENT_SECRET,
     };
   }
 
-  const cookieDomain = onRootDomain(url.hostname, env.ROOT_DOMAIN)
-    ? env.ROOT_DOMAIN
-    : undefined;
+  const cookieDomain = root && onRootDomain(host, root) ? root : undefined;
+  const trustedOrigins = [origin];
+  if (root) {
+    trustedOrigins.push(`https://${root}`, `https://*.${root}`);
+    if (url.protocol === "http:") {
+      trustedOrigins.push(`http://${root}`, `http://*.${root}`);
+    }
+  }
 
   return betterAuth({
     database: env.DB,
     secret: env.BETTER_AUTH_SECRET,
-    baseURL: env.BETTER_AUTH_URL,
-    trustedOrigins: [
-      env.BETTER_AUTH_URL,
-      url.origin,
-      `https://${env.ROOT_DOMAIN}`,
-      `https://*.${env.ROOT_DOMAIN}`
-    ],
+    baseURL: origin,
+    trustedOrigins,
     advanced: {
       useSecureCookies: url.protocol === "https:",
       crossSubDomainCookies: cookieDomain
         ? { enabled: true, domain: cookieDomain }
-        : { enabled: false }
+        : { enabled: false },
     },
     socialProviders,
     plugins: [
@@ -94,7 +170,7 @@ function authFor(env: Env, request: Request) {
         jwks: {
           jwksPath: "/.well-known/jwks.json",
           rotationInterval: 60 * 60 * 24 * 30,
-          gracePeriod: 60 * 60 * 24 * 30
+          gracePeriod: 60 * 60 * 24 * 30,
         },
         jwt: {
           issuer,
@@ -104,16 +180,16 @@ function authFor(env: Env, request: Request) {
             sub: user.id,
             email: user.email,
             name: user.name,
-            email_verified: user.emailVerified
-          })
-        }
+            email_verified: user.emailVerified,
+          }),
+        },
       }),
       oauthProvider({
         loginPage: "/",
         consentPage: "/consent",
-        scopes: ["openid", "profile", "email"]
-      })
-    ]
+        scopes: ["openid", "profile", "email"],
+      }),
+    ],
   });
 }
 
@@ -121,9 +197,10 @@ function trusted(origin: string | null, env: Env, request: Request) {
   if (!origin) return false;
   try {
     const u = new URL(origin);
+    const { url, root } = siteFrom(env, request);
     return (
-      u.origin === new URL(request.url).origin ||
-      (u.protocol === "https:" && onRootDomain(u.hostname, env.ROOT_DOMAIN))
+      u.origin === url.origin ||
+      Boolean(root && u.protocol === "https:" && onRootDomain(u.hostname, root))
     );
   } catch {
     return false;
@@ -151,25 +228,26 @@ function cors(response: Response, request: Request, env: Env) {
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
-    headers
+    headers,
   });
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const site = siteFrom(env, request);
 
     if (url.pathname === "/health") {
       return Response.json({
         ok: true,
-        issuer: issuerFor(env)
+        issuer: issuerFor(site.origin),
       });
     }
 
     if (url.pathname === "/api/public-config" && request.method === "GET") {
       return Response.json({
-        rootDomain: env.ROOT_DOMAIN,
-        providers: providersFor(env)
+        rootDomain: site.root ?? site.host,
+        providers: providersFor(env),
       });
     }
 
@@ -191,8 +269,8 @@ export default {
             "Access-Control-Allow-Headers": "Content-Type, Authorization",
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
             "Access-Control-Max-Age": "86400",
-            Vary: "Origin"
-          }
+            Vary: "Origin",
+          },
         });
       }
 
@@ -204,5 +282,5 @@ export default {
     }
 
     return env.ASSETS.fetch(request);
-  }
+  },
 } satisfies ExportedHandler<Env>;

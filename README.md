@@ -32,16 +32,16 @@ npx wrangler d1 create workers-sso
 
 Put the returned D1 ID into `wrangler.jsonc`.
 
-Do **not** put runtime domains in `wrangler.jsonc` `vars`. Wrangler overwrites dashboard values
-for any key present in that file, even with `--keep-vars`. Set them in the Worker dashboard
-under **Settings → Variables and Secrets**:
+`BETTER_AUTH_URL` and `ROOT_DOMAIN` are optional. By default the Worker uses the incoming
+request: origin becomes the Better Auth base URL, and `auth.example.com` yields cookie/CORS
+parent domain `example.com`. `localhost` and `*.workers.dev` stay host-only (no parent cookie).
 
-```text
-ROOT_DOMAIN=example.com
-BETTER_AUTH_URL=https://auth.example.com
-```
+Set them in **Settings → Variables and Secrets** only if you need to pin a canonical host or
+a parent domain that is not the request host minus one label. Do **not** put them in
+`wrangler.jsonc` `vars` — Wrangler overwrites dashboard values for keys present in that file,
+even with `--keep-vars`.
 
-For local development, copy `.dev.vars.example` to `.dev.vars` and use localhost values there.
+For local development, copy `.dev.vars.example` to `.dev.vars`.
 
 Generate and store the Better Auth secret:
 
@@ -235,8 +235,8 @@ The UI is a Vite app (`index.html` + `src/client`). `npm run dev` uses the Cloud
 ## Security model
 
 - session cookies are `Secure` and `HttpOnly`
-- browser callbacks are restricted to the configured parent domain
-- credentialed CORS is restricted to HTTPS origins under `ROOT_DOMAIN`
+- browser callbacks are restricted to the request parent domain
+- credentialed CORS is restricted to HTTPS origins under that parent domain
 - upstream OAuth credentials and Better Auth secret live only in the auth Worker
 - JWT signing uses asymmetric JWKS keys
 - resource servers receive only public verification keys
