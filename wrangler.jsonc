@@ -4,6 +4,15 @@
   "main":"src/index.ts",
   "compatibility_date":"2026-09-19",
   "compatibility_flags":["nodejs_compat"],
-  "d1_databases":[{"binding":"DB","database_name":"workers-sso","database_id":"REPLACE_WITH_YOUR_D1_DATABASE_ID"}],
-  "vars":{"ROOT_DOMAIN":"example.com","BETTER_AUTH_URL":"https://auth.example.com"}
+  "d1_databases":[
+    {
+      "binding":"DB",
+      "database_name":"workers-sso",
+      "database_id":"00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  "vars":{
+    "ROOT_DOMAIN":"example.com",
+    "BETTER_AUTH_URL":"https://auth.example.com"
+  }
 }
