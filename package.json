@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "npm run build && vite preview",
+    "deploy": "npm run build && wrangler deploy --keep-vars",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.client.json",
     "auth:generate": "node scripts/generate-auth-sql.mjs"
   },
   "dependencies": {
@@ -14,9 +16,11 @@
     "better-auth": "^1.7.5"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.56.0",
     "@cloudflare/workers-types": "^5.20260919.1",
     "better-sqlite3": "^13.0.3",
     "typescript": "^5.9.2",
+    "vite": "^8.3.0",
     "wrangler": "^4.135.0"
   }
 }

@@ -11,6 +11,7 @@ It provides two layers:
 
 - Google, Microsoft and X (Twitter) OAuth
 - Cloudflare Workers + D1
+- Vite UI with the Cloudflare Vite plugin
 - parent-domain browser SSO
 - Better Auth JWT/JWKS
 - Better Auth OAuth 2.1 / OIDC provider metadata
@@ -225,6 +226,11 @@ Copy `.dev.vars.example` to `.dev.vars`, fill the desired credentials, and run:
 ```bash
 npm run dev
 ```
+
+The UI is a Vite app (`index.html` + `src/client`). `npm run dev` uses the Cloudflare Vite plugin, so the Worker, D1, and frontend share one origin. Production deploys run `vite build` first; in Workers Builds set:
+
+- Build command: `npm run build`
+- Deploy command: `npx wrangler deploy --keep-vars`
 
 ## Security model
 
