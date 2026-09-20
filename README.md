@@ -2,175 +2,234 @@
 
 Thin, self-hosted SSO for **Cloudflare Workers + D1**, powered by Better Auth.
 
-It has two deliberately separate layers:
+It provides two layers:
 
-1. **Browser SSO** — sign in once at `auth.example.com`; a secure HttpOnly parent-domain session cookie gives trusted `*.example.com` sites the same browser session.
-2. **Portable API auth** — authenticated browsers can obtain a short-lived, asymmetrically signed JWT. APIs verify it locally through public JWKS, with no shared secret and no Better Auth dependency.
+1. **Browser SSO** — sign in once at \`auth.example.com\`; a secure HttpOnly parent-domain cookie gives trusted \`*.example.com\` sites the same session.
+2. **Portable API auth** — authenticated browsers can obtain a short-lived, asymmetrically signed JWT. Resource servers verify it locally through OIDC discovery + JWKS.
 
 ## Features
 
 - Google, Microsoft and X (Twitter) OAuth
 - Cloudflare Workers + D1
 - parent-domain browser SSO
-- Better Auth JWT/JWKS plugin
-- public JWKS at `/api/auth/.well-known/jwks.json`
-- short-lived JWTs from `/api/auth/token`
-- no per-subdomain OAuth client registration
+- Better Auth JWT/JWKS
+- Better Auth OAuth 2.1 / OIDC provider metadata
+- OIDC discovery at \`{AUTH_ISSUER}/.well-known/openid-configuration\`
+- public asymmetric JWKS
+- short-lived JWTs
 - no authentication secret shared with resource servers
-- credentialed CORS only for the configured parent domain
+- no per-subdomain configuration required for the browser SSO model
 
 > Parent-domain cookies deliberately treat every subdomain as one browser trust boundary. Do not use this mode if arbitrary users or third parties can control a subdomain.
 
 ## Deploy
 
-```bash
+\`\`\`bash
 npm install
 npx wrangler d1 create workers-sso
-```
+\`\`\`
 
-Put the returned D1 ID into `wrangler.jsonc`, then set your domain:
+Put the returned D1 ID into \`wrangler.jsonc\`, then set:
 
-```json
+\`\`\`json
 "ROOT_DOMAIN": "example.com",
 "BETTER_AUTH_URL": "https://auth.example.com"
-```
+\`\`\`
 
 Generate and store the Better Auth secret:
 
-```bash
+\`\`\`bash
 openssl rand -base64 32
 npx wrangler secret put BETTER_AUTH_SECRET
-```
+\`\`\`
 
-Add whichever providers you want:
+Add whichever upstream providers you want:
 
-```bash
+\`\`\`bash
 npx wrangler secret put GOOGLE_CLIENT_ID
 npx wrangler secret put GOOGLE_CLIENT_SECRET
+
 npx wrangler secret put MICROSOFT_CLIENT_ID
 npx wrangler secret put MICROSOFT_CLIENT_SECRET
+
 npx wrangler secret put TWITTER_CLIENT_ID
 npx wrangler secret put TWITTER_CLIENT_SECRET
-```
+\`\`\`
 
-Generate Better Auth's schema (including the JWT plugin's `jwks` table), apply it to D1, then deploy:
+Generate the Better Auth schema, including JWT and OAuth-provider tables, apply it to D1, then deploy:
 
-```bash
+\`\`\`bash
 npx @better-auth/cli generate
 npx wrangler d1 migrations apply workers-sso --remote
 npm run deploy
-```
+\`\`\`
 
-Attach `auth.example.com` as the Worker's custom domain.
+Attach \`auth.example.com\` as the Worker's custom domain.
 
-## OAuth callback URLs
+## Upstream OAuth callback URLs
 
-For `https://auth.example.com`:
+For \`https://auth.example.com\`:
 
 | Provider | Callback |
 |---|---|
-| Google | `https://auth.example.com/api/auth/callback/google` |
-| Microsoft | `https://auth.example.com/api/auth/callback/microsoft` |
-| X / Twitter | `https://auth.example.com/api/auth/callback/twitter` |
+| Google | \`https://auth.example.com/api/auth/callback/google\` |
+| Microsoft | \`https://auth.example.com/api/auth/callback/microsoft\` |
+| X / Twitter | \`https://auth.example.com/api/auth/callback/twitter\` |
 
-Configure these once. Individual subdomains do not need their own upstream OAuth applications.
+Configure these once. Individual subdomains do not need their own Google/Microsoft/X applications.
 
 ## Browser SSO
 
 Send a user to:
 
-```text
+\`\`\`text
 https://auth.example.com/?callbackURL=https://game.example.com/
-```
+\`\`\`
 
-After OAuth completes, the browser has a secure HttpOnly session cookie scoped to the parent domain. The login page accepts callback URLs only on that HTTPS parent domain.
+After OAuth completes, Better Auth creates a secure HttpOnly session cookie scoped to the parent domain.
 
 For browser UI that only needs the current session:
 
-```js
+\`\`\`js
 const session = await fetch("https://auth.example.com/api/auth/get-session", {
   credentials: "include"
 }).then(r => r.json());
-```
+\`\`\`
 
-Treat the session cookie as opaque. Do not copy `BETTER_AUTH_SECRET` into another Worker and do not implement your own cookie parser.
+Treat the browser cookie as opaque. Do not share \`BETTER_AUTH_SECRET\` with another Worker and do not parse Better Auth's session cookie yourself.
 
-## Standard resource-server boundary: Bearer JWT + JWKS
+## Resource Workers: one required setting
 
-When a frontend needs to call an independently deployed API, exchange its existing authenticated session for a short-lived JWT:
+For a resource Worker deployed with workers-sso, the only required authentication setting is:
 
-```js
+\`\`\`text
+AUTH_ISSUER=https://auth.example.com/api/auth
+\`\`\`
+
+The Worker can derive everything else from standard OIDC discovery:
+
+\`\`\`text
+AUTH_ISSUER
+   ↓
+{AUTH_ISSUER}/.well-known/openid-configuration
+   ↓
+jwks_uri
+   ↓
+public signing keys
+\`\`\`
+
+For workers-sso's convenience JWTs, the default expected audience is also the issuer:
+
+\`\`\`text
+aud = AUTH_ISSUER
+\`\`\`
+
+So a consuming Worker can make \`AUTH_AUDIENCE\` optional and default it to \`AUTH_ISSUER\`.
+
+This means a normal workers-sso deployment needs only one variable, while deployments using another OIDC provider can override the audience when that provider uses a different resource identifier.
+
+## Get a short-lived JWT
+
+A browser with an existing workers-sso session can obtain a 15-minute JWT:
+
+\`\`\`js
 const { token } = await fetch("https://auth.example.com/api/auth/token", {
   credentials: "include"
 }).then(r => r.json());
+\`\`\`
 
+Then call an API normally:
+
+\`\`\`js
 await fetch("https://api.example.com/private", {
-  headers: { Authorization: `Bearer ${token}` }
+  headers: {
+    Authorization: \`Bearer \${token}\`
+  }
 });
-```
+\`\`\`
 
-The API does **not** need D1, OAuth credentials or `BETTER_AUTH_SECRET`. It verifies the JWT using the public JWKS:
+The \`/token\` endpoint is a first-party session-to-JWT convenience endpoint. OAuth/OIDC clients should use the OAuth Provider endpoints advertised by discovery instead.
 
-```text
-https://auth.example.com/api/auth/.well-known/jwks.json
-```
+## Generic verification
 
-The token defaults to a 15-minute lifetime. Its issuer and audience are both `BETTER_AUTH_URL`.
+A resource Worker should:
 
-A resource server should validate at least:
+1. Read \`AUTH_ISSUER\`.
+2. Fetch and cache \`{AUTH_ISSUER}/.well-known/openid-configuration\`.
+3. Read \`jwks_uri\` from the metadata.
+4. Verify the JWT signature against that JWKS.
+5. Verify \`iss === AUTH_ISSUER\`.
+6. Verify \`aud === AUTH_AUDIENCE\`, with \`AUTH_AUDIENCE\` defaulting to \`AUTH_ISSUER\`.
+7. Verify \`exp\` / \`nbf\`.
+8. Perform application-specific authorization separately.
 
-- signature against JWKS
-- `iss === AUTH_ISSUER`
-- `aud === AUTH_AUDIENCE`
-- expiration / not-before claims
-- application-specific authorization after authentication
+That contract does not require Better Auth in the resource Worker. Any standards-based JOSE/JWT library can implement it.
 
-For this repository's default configuration:
+A generic open-source Worker can therefore expose only:
 
-```text
-AUTH_ISSUER=https://auth.example.com
-AUTH_AUDIENCE=https://auth.example.com
-JWKS_URL=https://auth.example.com/api/auth/.well-known/jwks.json
-```
+\`\`\`text
+AUTH_ISSUER=
+AUTH_AUDIENCE=   # optional
+\`\`\`
 
-For example, a Worker can use any standards-based JOSE/JWT library. It does not need a workers-sso-specific SDK.
+and let the deployer choose workers-sso, Keycloak, Auth0, or another compatible OIDC issuer.
+
+## Discovery endpoints
+
+With the default deployment:
+
+\`\`\`text
+Issuer:
+https://auth.example.com/api/auth
+
+OIDC discovery:
+https://auth.example.com/api/auth/.well-known/openid-configuration
+
+OAuth authorization-server metadata:
+https://auth.example.com/api/auth/.well-known/oauth-authorization-server
+
+JWKS:
+discover from the metadata rather than hard-coding this URL
+\`\`\`
+
+The OAuth Provider plugin also exposes its authorization, token, UserInfo, introspection and revocation endpoints through the Better Auth handler.
+
+## Audience model
+
+workers-sso intentionally defaults convenience JWTs to one shared audience equal to the issuer. This keeps trusted first-party resource Workers at **one required configuration value**.
+
+If you need strict token isolation between individual APIs — for example, a token for \`game.example.com\` must never be accepted by \`admin.example.com\` — use explicit OAuth protected resources / RFC 8707 resource indicators and configure distinct audiences. Better Auth's OAuth Provider supports that model, but resources are explicit rather than wildcard subdomains.
 
 ## Why two mechanisms?
 
-The parent-domain cookie gives first-party subdomains seamless browser SSO. JWT/JWKS gives independently developed resource servers a clean, portable authentication boundary.
+\`\`\`text
+Parent-domain Cookie
+    = seamless first-party browser SSO
 
-The important rule is:
+Bearer JWT + OIDC discovery + JWKS
+    = portable resource-server contract
+\`\`\`
 
-```text
-Cookie = browser SSO implementation detail
-Bearer JWT + JWKS = API/resource-server contract
-```
-
-That means an open-source API can make authentication pluggable instead of importing Better Auth internals. A deployment can use workers-sso or another compatible JWT issuer.
-
-## Current interoperability scope
-
-The JWT/JWKS interface is standards-based JOSE/JWT verification, but this repository does **not** currently claim to be a complete OAuth 2.1 or OpenID Connect Authorization Server.
-
-If a consumer specifically requires OIDC discovery, OAuth authorization-code flows, per-resource `aud`, token introspection/revocation, scopes, or RFC 9068 access-token semantics, use a full OAuth/OIDC provider configuration rather than assuming those features from the JWT endpoint.
+The browser cookie remains an implementation detail of workers-sso. Other open-source Workers only need to understand standard bearer JWT verification.
 
 ## Local development
 
-Copy `.dev.vars.example` to `.dev.vars`, fill the desired credentials, and run:
+Copy \`.dev.vars.example\` to \`.dev.vars\`, fill the desired credentials, and run:
 
-```bash
+\`\`\`bash
 npm run dev
-```
+\`\`\`
 
 ## Security model
 
-- session cookies are `Secure` and `HttpOnly`
+- session cookies are \`Secure\` and \`HttpOnly\`
 - browser callbacks are restricted to the configured parent domain
-- credentialed CORS is restricted to HTTPS origins under `ROOT_DOMAIN`
-- OAuth credentials and Better Auth secret live only in the auth Worker
-- JWT signing uses Better Auth's asymmetric JWKS keys
+- credentialed CORS is restricted to HTTPS origins under \`ROOT_DOMAIN\`
+- upstream OAuth credentials and Better Auth secret live only in the auth Worker
+- JWT signing uses asymmetric JWKS keys
 - resource servers receive only public verification keys
 - signing keys rotate every 30 days with a 30-day grace period
+- resource Workers verify issuer, audience, lifetime and signature
 
 ## License
 
