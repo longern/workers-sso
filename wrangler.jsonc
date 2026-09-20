@@ -1,18 +1,31 @@
 {
-  "$schema":"node_modules/wrangler/config-schema.json",
-  "name":"workers-sso",
-  "main":"src/index.ts",
-  "compatibility_date":"2026-09-19",
-  "compatibility_flags":["nodejs_compat"],
-  "d1_databases":[
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "workers-sso",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-19",
+  "compatibility_flags": ["nodejs_compat"],
+  // Dashboard Variables & Secrets are the runtime source of truth.
+  // keep_vars only prevents deleting dashboard vars that are NOT in this file;
+  // keys listed under vars are still overwritten on every deploy.
+  "keep_vars": true,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*",
+      "/health",
+      "/.well-known/oauth-authorization-server",
+      "/.well-known/oauth-authorization-server/*"
+    ]
+  },
+  "d1_databases": [
     {
-      "binding":"DB",
-      "database_name":"workers-sso",
-      "database_id":"2cf22ef8-cbed-4ee4-9157-1cf0909a5086"
+      "binding": "DB",
+      "database_name": "workers-sso",
+      "database_id": "2cf22ef8-cbed-4ee4-9157-1cf0909a5086",
+      "migrations_dir": "migrations"
     }
-  ],
-  "vars":{
-    "ROOT_DOMAIN":"example.com",
-    "BETTER_AUTH_URL":"https://auth.example.com"
-  }
+  ]
 }

@@ -1,0 +1,136 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f3f1ec;
+  --card: #fffcf7;
+  --ink: #1c1916;
+  --muted: #6f675e;
+  --line: #ddd6cc;
+  --accent: #1c1916;
+  --accent-text: #fffcf7;
+  --danger: #9b2c2c;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161412;
+    --card: #201d1a;
+    --ink: #f4efe8;
+    --muted: #b3aaa0;
+    --line: #3a342e;
+    --accent: #f4efe8;
+    --accent-text: #161412;
+    --danger: #f0a8a8;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+main {
+  width: min(420px, calc(100% - 32px));
+  padding: 28px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 1.45rem;
+  letter-spacing: -0.03em;
+}
+
+p, .muted { color: var(--muted); }
+
+.muted { margin: 0 0 18px; }
+
+button {
+  width: 100%;
+  padding: 12px 14px;
+  margin: 7px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover { filter: brightness(0.98); }
+button:disabled { opacity: 0.6; cursor: not-allowed; }
+button.primary {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+button.ghost { background: transparent; }
+
+.row { display: flex; gap: 10px; }
+.row button { width: 50%; }
+
+.user {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 16px 0 20px;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--line);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+}
+
+.user h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.accounts {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+}
+
+.accounts li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.95rem;
+}
+
+.accounts button {
+  width: auto;
+  margin: 0;
+  padding: 7px 10px;
+  font-size: 0.85rem;
+}
+
+.token {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px dashed var(--line);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, monospace;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+#error, .error { color: var(--danger); }

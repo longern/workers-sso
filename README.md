@@ -29,12 +29,18 @@ npm install
 npx wrangler d1 create workers-sso
 ```
 
-Put the returned D1 ID into `wrangler.jsonc`, then set:
+Put the returned D1 ID into `wrangler.jsonc`.
 
-```json
-"ROOT_DOMAIN": "example.com",
-"BETTER_AUTH_URL": "https://auth.example.com"
+Do **not** put runtime domains in `wrangler.jsonc` `vars`. Wrangler overwrites dashboard values
+for any key present in that file, even with `--keep-vars`. Set them in the Worker dashboard
+under **Settings → Variables and Secrets**:
+
+```text
+ROOT_DOMAIN=example.com
+BETTER_AUTH_URL=https://auth.example.com
 ```
+
+For local development, copy `.dev.vars.example` to `.dev.vars` and use localhost values there.
 
 Generate and store the Better Auth secret:
 
@@ -59,7 +65,7 @@ npx wrangler secret put TWITTER_CLIENT_SECRET
 Generate the Better Auth schema, including JWT and OAuth-provider tables, apply it to D1, then deploy:
 
 ```bash
-npx @better-auth/cli generate
+npm run auth:generate
 npx wrangler d1 migrations apply workers-sso --remote
 npm run deploy
 ```
