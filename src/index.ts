@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { jwt } from "better-auth/plugins";
 
 interface Env {
   DB: D1Database;
@@ -31,7 +32,27 @@ function authFor(env: Env) {
       useSecureCookies: true,
       crossSubDomainCookies: { enabled: true, domain: env.ROOT_DOMAIN }
     },
-    socialProviders
+    socialProviders,
+    plugins: [
+      jwt({
+        jwks: {
+          jwksPath: "/.well-known/jwks.json",
+          rotationInterval: 60 * 60 * 24 * 30,
+          gracePeriod: 60 * 60 * 24 * 30
+        },
+        jwt: {
+          issuer: env.BETTER_AUTH_URL,
+          audience: env.BETTER_AUTH_URL,
+          expirationTime: "15m",
+          definePayload: ({ user }) => ({
+            sub: user.id,
+            email: user.email,
+            name: user.name,
+            email_verified: user.emailVerified
+          })
+        }
+      })
+    ]
   });
 }
 
@@ -82,7 +103,7 @@ export default {
         if(!trusted(origin,env)) return new Response(null,{status:403});
         return new Response(null,{status:204,headers:{
           "Access-Control-Allow-Origin":origin!,"Access-Control-Allow-Credentials":"true",
-          "Access-Control-Allow-Headers":"Content-Type","Access-Control-Allow-Methods":"GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers":"Content-Type, Authorization","Access-Control-Allow-Methods":"GET, POST, OPTIONS",
           "Access-Control-Max-Age":"86400","Vary":"Origin"
         }});
       }
