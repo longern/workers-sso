@@ -7,6 +7,13 @@ It provides two layers:
 1. **Browser SSO** — sign in once at `auth.example.com`; a secure HttpOnly parent-domain cookie gives trusted `*.example.com` sites the same session.
 2. **Portable API auth** — authenticated browsers can obtain a short-lived, asymmetrically signed JWT. Resource servers verify it locally through OIDC discovery + JWKS.
 
+## Frontend structure
+
+The UI uses Preact with hooks, TypeScript and Vite. `src/client/main.tsx` mounts
+the app; `pages/` contains login, consent, account and error pages, `components/`
+contains shared UI, and `lib/` owns authentication requests and presentation data.
+Translations and CSS remain independent. No router or global state library is needed.
+
 ## Features
 
 - Google, Microsoft and X (Twitter) OAuth

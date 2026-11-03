@@ -189,6 +189,7 @@ function createAuth(env: Env, request: Request) {
       oauthProvider({
         loginPage: "/",
         consentPage: "/consent",
+        allowPublicClientPrelogin: true,
         scopes: ["openid", "profile", "email"],
       }),
       cimd({ fetchClientMetadataResource }),

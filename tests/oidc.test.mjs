@@ -194,3 +194,36 @@ test('PKCE mismatch and tampered consent query are rejected', async () => {
   assert.equal(token.status, 400);
   assert.equal((await token.json()).error, 'invalid_grant');
 });
+
+test('signed login pages can read public client metadata and forged queries cannot', async () => {
+  const login = await redirectTarget(await request(authorize()));
+  const response = await post('/api/auth/oauth2/public-client-prelogin', {
+    client_id: clientId, oauth_query: login.search.slice(1),
+  }, '');
+  assert.equal(response.status, 200, await response.clone().text());
+  const client = await response.json();
+  assert.equal(client.client_name, 'Playweft');
+  assert.equal(client.client_id, clientId);
+  assert.equal(client.client_uri, 'https://play.example.net/');
+  assert.equal(client.client_secret, undefined);
+  login.searchParams.set('scope', 'openid profile email');
+  const forged = await post('/api/auth/oauth2/public-client-prelogin', {
+    client_id: clientId, oauth_query: login.search.slice(1),
+  }, '');
+  assert.equal(forged.status, 400);
+});
+
+test('account consent management is session scoped', async () => {
+  const response = await request(issuer + '/api/auth/oauth2/get-consents', { headers: { cookie: sessionCookie() } });
+  assert.equal(response.status, 200);
+  const grants = await response.json();
+  assert.ok(grants.length > 0);
+  const guest = await request(issuer + '/api/auth/oauth2/get-consents');
+  assert.equal(guest.status, 401);
+  const denied = await post('/api/auth/oauth2/delete-consent', { id: grants[0].id }, '');
+  assert.equal(denied.status, 401);
+  const revoked = await post('/api/auth/oauth2/delete-consent', { id: grants[0].id });
+  assert.equal(revoked.status, 200);
+  const remaining = await (await request(issuer + '/api/auth/oauth2/get-consents', { headers: { cookie: sessionCookie() } })).json();
+  assert.ok(!remaining.some(grant => grant.id === grants[0].id));
+});
