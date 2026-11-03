@@ -9,16 +9,20 @@
     "preview": "npm run build && vite preview",
     "deploy": "npm run build && wrangler deploy --keep-vars",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.client.json",
-    "auth:generate": "node scripts/generate-auth-sql.mjs"
+    "auth:generate": "node scripts/generate-auth-sql.mjs",
+    "test": "npm run build && node --test tests/*.test.mjs"
   },
   "dependencies": {
-    "@better-auth/oauth-provider": "^1.7.5",
-    "better-auth": "^1.7.5"
+    "@better-auth/cimd": "1.7.15",
+    "@better-auth/oauth-provider": "1.7.15",
+    "better-auth": "1.7.15"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.56.0",
     "@cloudflare/workers-types": "^5.20260919.1",
     "better-sqlite3": "^13.0.3",
+    "jose": "6.2.12",
+    "miniflare": "5.20260918.0-alpha",
     "typescript": "^5.9.2",
     "vite": "^8.3.0",
     "wrangler": "^4.135.0"

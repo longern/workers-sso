@@ -5,9 +5,10 @@ import { fileURLToPath } from "node:url";
 import { betterAuth } from "better-auth";
 import { jwt } from "better-auth/plugins";
 import { oauthProvider } from "@better-auth/oauth-provider";
+import { cimd } from "@better-auth/cimd";
 import { getMigrations } from "better-auth/db/migration";
 
-const issuer = "https://auth.example.com/api/auth";
+const issuer = "https://auth.example.com";
 const db = new Database(":memory:");
 
 const auth = betterAuth({
@@ -37,6 +38,10 @@ const auth = betterAuth({
       loginPage: "/",
       consentPage: "/consent",
       scopes: ["openid", "profile", "email"],
+    }),
+    cimd({
+      // Schema generation never performs network requests.
+      fetchClientMetadataResource: async () => { throw new Error("Schema generation only"); },
     }),
   ],
 });

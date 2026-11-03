@@ -1,4 +1,8 @@
 import "./styles.css";
+import { createAuthClient } from "better-auth/client";
+import { oauthProviderClient } from "@better-auth/oauth-provider/client";
+
+const authClient = createAuthClient({ plugins: [oauthProviderClient()] });
 
 type AttrValue = string | number | boolean | ((event: Event) => void) | null | undefined;
 type Child = Node | string | number | false | null | undefined;
@@ -38,24 +42,12 @@ function setStatus(text: string, isError = false) {
 }
 
 async function api(path: string, options: RequestInit = {}): Promise<any> {
-  const response = await fetch("/api/auth" + path, {
-    credentials: "include",
-    headers: {
-      ...(options.body ? { "content-type": "application/json" } : {}),
-      ...options.headers,
-    },
-    ...options,
+  const { data, error } = await authClient.$fetch(path, {
+    method: options.method === "POST" ? "POST" : "GET",
+    body: options.body ? JSON.parse(String(options.body)) : undefined,
+    headers: { accept: "application/json" },
   });
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      data?.message ||
-      data?.error?.message ||
-      data?.error ||
-      data?.error_description ||
-      "Request failed";
-    throw new Error(typeof message === "string" ? message : "Request failed");
-  }
+  if (error) throw new Error(error.message || "Request failed");
   return data;
 }
 
@@ -131,32 +123,12 @@ function renderConsent() {
   async function decide(accept: boolean) {
     setStatus(accept ? "Authorizing…" : "Denying…");
     try {
-      const response = await fetch("/api/auth/oauth2/consent", {
+      const data = await api("/oauth2/consent", {
         method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
         body: JSON.stringify({ accept }),
-        redirect: "manual",
       });
-      if (response.status >= 300 && response.status < 400) {
-        const locationHeader = response.headers.get("Location");
-        if (locationHeader) {
-          location.href = locationHeader;
-          return;
-        }
-      }
-      const data = await response.json().catch(() => null);
-      if (data?.url) {
-        location.href = data.url;
-        return;
-      }
-      if (response.redirected) {
-        location.href = response.url;
-        return;
-      }
-      if (!response.ok) {
-        throw new Error(data?.message || data?.error || "Consent failed");
-      }
+      if (!data?.url) throw new Error("No redirect URL returned");
+      location.href = data.url;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Consent failed", true);
     }

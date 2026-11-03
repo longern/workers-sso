@@ -110,7 +110,7 @@ Treat the browser cookie as opaque. Do not share `BETTER_AUTH_SECRET` with anoth
 For a resource Worker deployed with workers-sso, the only required authentication setting is:
 
 ```text
-AUTH_ISSUER=https://auth.example.com/api/auth
+AUTH_ISSUER=https://auth.example.com
 ```
 
 The Worker can derive everything else from standard OIDC discovery:
@@ -187,19 +187,59 @@ With the default deployment:
 
 ```text
 Issuer:
-https://auth.example.com/api/auth
+https://auth.example.com
 
 OIDC discovery:
-https://auth.example.com/api/auth/.well-known/openid-configuration
+https://auth.example.com/.well-known/openid-configuration
 
 OAuth authorization-server metadata:
-https://auth.example.com/api/auth/.well-known/oauth-authorization-server
+https://auth.example.com/.well-known/oauth-authorization-server
 
 JWKS:
 discover from the metadata rather than hard-coding this URL
 ```
 
-The OAuth Provider plugin also exposes its authorization, token, UserInfo, introspection and revocation endpoints through the Better Auth handler.
+The issuer is the site origin, without `/api/auth` or a trailing slash. OIDC clients can therefore configure `OIDC_ISSUER_URL=https://auth.example.com`. The OAuth Provider plugin exposes its authorization, token, UserInfo, introspection and revocation endpoints under `/api/auth`; clients discover those URLs from the metadata.
+
+Changing from the previous `/api/auth` issuer changes token identity: update consuming services' issuer settings together. Existing tokens with the old issuer will no longer pass verification against the new issuer.
+
+## OIDC clients with CIMD
+
+CIMD (Client ID Metadata Document, draft-02) is enabled through Better Auth's
+`@better-auth/cimd` plugin. A client can use the HTTPS URL of its metadata document
+as its `client_id`, without manual registration or a shared client secret.
+Discovery advertises `client_id_metadata_document_supported: true`.
+
+For Playweft, configure only:
+
+```text
+OIDC_ISSUER_URL=https://auth.example.com
+```
+
+Playweft publishes its metadata at
+`https://play.example.com/api/auth/oidc/client.json` and uses Authorization Code
+with PKCE (S256). The document must identify its own URL and list its permitted
+callback URLs. Login and consent use the OAuth Provider client plugin to preserve
+the provider's signed authorization query across the social login flow.
+
+CIMD clients remain subject to login and user consent; hosting a metadata document
+does not make an application trusted. Dynamic Client Registration remains disabled.
+Explicitly registered clients continue to work. The plugin persists discovered client
+metadata and its discovery provenance in the existing D1 `oauthClient` table;
+login sessions and user consent also use the existing database. No additional
+D1 tables or storage bindings are required.
+
+The Worker fetches metadata and discovery-owned JWKS over HTTPS without following
+redirects. Keep `global_fetch_strictly_public` enabled: Cloudflare's network boundary
+restricts global fetch to public Internet destinations, including same-zone requests.
+Do not replace this transport with a private-network or service binding fetch.
+The plugin validates document URLs, origin-bound fields, response types and sizes,
+and applies timeouts, bounded caching and fetch budgets. These budgets are per Worker
+isolate rather than a deployment-wide rate limit.
+
+Run `npm run typecheck` and `npm test` to validate the integration. Tests use an
+isolated local Worker and D1 database, with test-only metadata responses and sessions;
+they do not contact a real social login provider.
 
 ## Audience model
 

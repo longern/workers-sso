@@ -1,6 +1,8 @@
 import { betterAuth } from "better-auth";
 import { jwt } from "better-auth/plugins";
 import { oauthProvider } from "@better-auth/oauth-provider";
+import { cimd } from "@better-auth/cimd";
+import { fetchClientMetadataResource } from "./cimd-transport";
 
 interface Env {
   DB: D1Database;
@@ -95,7 +97,7 @@ function siteFrom(env: Env, request: Request) {
 }
 
 function issuerFor(origin: string) {
-  return new URL("/api/auth", origin).href.replace(/\/$/, "");
+  return new URL(origin).origin;
 }
 
 function providersFor(env: Env): Provider[] {
@@ -116,7 +118,7 @@ function onRootDomain(host: string, root: string) {
   return host === root || host.endsWith("." + root);
 }
 
-function authFor(env: Env, request: Request) {
+function createAuth(env: Env, request: Request) {
   const { url, origin, host, root } = siteFrom(env, request);
   const issuer = issuerFor(origin);
   const socialProviders: Record<string, any> = {};
@@ -189,8 +191,20 @@ function authFor(env: Env, request: Request) {
         consentPage: "/consent",
         scopes: ["openid", "profile", "email"],
       }),
+      cimd({ fetchClientMetadataResource }),
     ],
   });
+}
+
+// Reuse the plugin instance so CIMD caching and fetch budgets survive requests.
+let cachedAuth: { env: Env; origin: string; auth: ReturnType<typeof createAuth> } | undefined;
+
+function authFor(env: Env, request: Request) {
+  const { origin } = siteFrom(env, request);
+  if (cachedAuth?.env === env && cachedAuth.origin === origin) return cachedAuth.auth;
+  const auth = createAuth(env, request);
+  cachedAuth = { env, origin, auth };
+  return auth;
 }
 
 function trusted(origin: string | null, env: Env, request: Request) {
@@ -253,6 +267,7 @@ export default {
 
     if (
       url.pathname.startsWith("/api/auth/") ||
+      url.pathname === "/.well-known/openid-configuration" ||
       url.pathname === "/.well-known/oauth-authorization-server" ||
       url.pathname.startsWith("/.well-known/oauth-authorization-server/")
     ) {
