@@ -1,7 +1,7 @@
 import type { Client } from "./presentation";
 
 export type Provider = { id: string; label: string };
-export type Config = { rootDomain: string; providers: Provider[] };
+export type Config = { providers: Provider[] };
 export type User = {
   id: string;
   name?: string | null;

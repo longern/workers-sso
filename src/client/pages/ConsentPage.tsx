@@ -1,3 +1,4 @@
+import { ActionButton } from "../components/ActionButton";
 import { AppIdentity, AccountIdentity } from "../components/Identity";
 import { Permissions } from "../components/Permissions";
 import { useI18n } from "../components/I18nProvider";
@@ -15,13 +16,13 @@ export function ConsentPage({ client, session, run, switchAccount }: {
     <AppIdentity client={client} className="client-card" />
     <div class="consent-account">
       <AccountIdentity user={session.user} />
-      <button type="button" class="text-button" onClick={() => void run(switchAccount)}>{t("switchAccount")}</button>
+      <ActionButton className="text-button" run={run} onAction={switchAccount} label={t("switchAccount")} />
     </div>
     <p class="section-intro">{t("permissions")}</p>
     <Permissions scopes={requestedScopes(location.search)} />
     <div class="consent-actions">
-      <button type="button" class="primary full" onClick={() => void run(() => follow("/oauth2/consent", { accept: true }))}>{t("allow")}</button>
-      <button type="button" class="text-button full" onClick={() => void run(() => follow("/oauth2/consent", { accept: false }))}>{t("cancel")}</button>
+      <ActionButton className="primary full" run={run} onAction={() => follow("/oauth2/consent", { accept: true })} label={t("allow")} />
+      <ActionButton className="text-button full" run={run} onAction={() => follow("/oauth2/consent", { accept: false })} label={t("cancel")} />
     </div>
     {domain && <p class="return-note">{t("returnTo")} {domain}</p>}
   </>;

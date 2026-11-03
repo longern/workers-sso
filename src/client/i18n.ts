@@ -8,7 +8,7 @@ const zh = {
   noProviders: "暂时没有可用的登录方式", noGrants: "还没有授权任何应用", loadFailed: "加载失败，请重试", retry: "重试",
   working: "正在处理…", loading: "正在加载…", failed: "操作失败，请重试", errorTitle: "暂时无法继续",
   revokeTitle: "撤销对此应用的授权？", revokeHint: "下次访问时需要重新授权。这不会退出应用中已经建立的登录会话。",
-  revoked: "已撤销授权", continueAs: "以 {name} 的身份继续", unknownPermission: "访问权限：{scope}", methodsFailed: "无法加载已连接的登录方式",
+  continueAs: "以 {name} 的身份继续", unknownPermission: "访问权限：{scope}", methodsFailed: "无法加载已连接的登录方式",
   identityShort: "账户身份", profileShort: "昵称与头像", emailShort: "邮箱地址", offlineShort: "离线访问", home: "返回账户首页",
 };
 const en: Record<keyof typeof zh, string> = {
@@ -20,7 +20,7 @@ const en: Record<keyof typeof zh, string> = {
   noProviders: "No sign-in methods are available", noGrants: "You haven’t authorized any apps yet", loadFailed: "Couldn’t load this page. Try again.", retry: "Try again",
   working: "Working…", loading: "Loading…", failed: "Something went wrong. Try again.", errorTitle: "Unable to continue",
   revokeTitle: "Revoke access for this app?", revokeHint: "You’ll need to authorize it again next time. This won’t sign you out of sessions already established in the app.",
-  revoked: "Access revoked", continueAs: "Continue as {name}", unknownPermission: "Permission: {scope}", methodsFailed: "Couldn’t load connected sign-in methods",
+  continueAs: "Continue as {name}", unknownPermission: "Permission: {scope}", methodsFailed: "Couldn’t load connected sign-in methods",
   identityShort: "Account identity", profileShort: "Name and profile picture", emailShort: "Email address", offlineShort: "Offline access", home: "Back to account",
 };
 export function initialLanguage(): Language {

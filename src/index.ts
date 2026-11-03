@@ -7,7 +7,6 @@ import { fetchClientMetadataResource } from "./cimd-transport";
 interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
-  ROOT_DOMAIN?: string;
   BETTER_AUTH_URL?: string;
   BETTER_AUTH_SECRET: string;
   GOOGLE_CLIENT_ID?: string;
@@ -20,84 +19,8 @@ interface Env {
 
 type Provider = { id: string; label: string };
 
-const SHARED_PLATFORM_SUFFIXES = [
-  "workers.dev",
-  "pages.dev",
-  "github.io",
-  "gitlab.io",
-  "netlify.app",
-  "vercel.app",
-  "web.app",
-  "firebaseapp.com",
-];
-
-const MULTI_PART_TLDS = new Set([
-  "co.uk",
-  "org.uk",
-  "ac.uk",
-  "gov.uk",
-  "me.uk",
-  "co.jp",
-  "or.jp",
-  "ne.jp",
-  "ac.jp",
-  "com.au",
-  "net.au",
-  "org.au",
-  "edu.au",
-  "co.nz",
-  "org.nz",
-  "net.nz",
-  "com.br",
-  "net.br",
-  "org.br",
-  "co.in",
-  "com.in",
-  "net.in",
-  "org.in",
-  "com.cn",
-  "net.cn",
-  "org.cn",
-  "com.hk",
-  "com.sg",
-  "co.kr",
-  "com.tw",
-  "co.za",
-  "com.mx",
-  "com.ar",
-]);
-
-function isIpHost(host: string) {
-  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.startsWith("[");
-}
-
-function rootDomainFromHost(host: string): string | undefined {
-  const h = host.trim().replace(/\.$/, "").toLowerCase();
-  if (!h || h === "localhost" || h.endsWith(".localhost") || isIpHost(h)) {
-    return undefined;
-  }
-  for (const suffix of SHARED_PLATFORM_SUFFIXES) {
-    if (h === suffix || h.endsWith("." + suffix)) return undefined;
-  }
-  const parts = h.split(".");
-  if (parts.length < 2) return undefined;
-  const last2 = parts.slice(-2).join(".");
-  if (MULTI_PART_TLDS.has(last2)) {
-    return parts.length <= 3 ? h : parts.slice(1).join(".");
-  }
-  return parts.length === 2 ? h : parts.slice(1).join(".");
-}
-
-function siteFrom(env: Env, request: Request) {
-  const url = new URL(request.url);
-  const origin = (env.BETTER_AUTH_URL || url.origin).replace(/\/$/, "");
-  const host = new URL(origin).hostname;
-  const root = env.ROOT_DOMAIN || rootDomainFromHost(host);
-  return { url, origin, host, root };
-}
-
-function issuerFor(origin: string) {
-  return new URL(origin).origin;
+function originFor(env: Env, request: Request) {
+  return new URL(env.BETTER_AUTH_URL || request.url).origin;
 }
 
 function providersFor(env: Env): Provider[] {
@@ -114,13 +37,8 @@ function providersFor(env: Env): Provider[] {
   return providers;
 }
 
-function onRootDomain(host: string, root: string) {
-  return host === root || host.endsWith("." + root);
-}
-
 function createAuth(env: Env, request: Request) {
-  const { url, origin, host, root } = siteFrom(env, request);
-  const issuer = issuerFor(origin);
+  const origin = originFor(env, request);
   const socialProviders: Record<string, any> = {};
 
   if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
@@ -145,25 +63,16 @@ function createAuth(env: Env, request: Request) {
     };
   }
 
-  const cookieDomain = root && onRootDomain(host, root) ? root : undefined;
-  const trustedOrigins = [origin];
-  if (root) {
-    trustedOrigins.push(`https://${root}`, `https://*.${root}`);
-    if (url.protocol === "http:") {
-      trustedOrigins.push(`http://${root}`, `http://*.${root}`);
-    }
-  }
-
   return betterAuth({
     database: env.DB,
     secret: env.BETTER_AUTH_SECRET,
     baseURL: origin,
-    trustedOrigins,
+    trustedOrigins: [origin],
+    disabledPaths: ["/token"],
     advanced: {
-      useSecureCookies: url.protocol === "https:",
-      crossSubDomainCookies: cookieDomain
-        ? { enabled: true, domain: cookieDomain }
-        : { enabled: false },
+      useSecureCookies: new URL(origin).protocol === "https:",
+      // Keep host-only sessions separate from the former parent-domain cookies.
+      cookiePrefix: "workers-sso",
     },
     socialProviders,
     plugins: [
@@ -174,17 +83,7 @@ function createAuth(env: Env, request: Request) {
           rotationInterval: 60 * 60 * 24 * 30,
           gracePeriod: 60 * 60 * 24 * 30,
         },
-        jwt: {
-          issuer,
-          audience: issuer,
-          expirationTime: "15m",
-          definePayload: ({ user }) => ({
-            sub: user.id,
-            email: user.email,
-            name: user.name,
-            email_verified: user.emailVerified,
-          }),
-        },
+        jwt: { issuer: origin },
       }),
       oauthProvider({
         loginPage: "/",
@@ -201,67 +100,27 @@ function createAuth(env: Env, request: Request) {
 let cachedAuth: { env: Env; origin: string; auth: ReturnType<typeof createAuth> } | undefined;
 
 function authFor(env: Env, request: Request) {
-  const { origin } = siteFrom(env, request);
+  const origin = originFor(env, request);
   if (cachedAuth?.env === env && cachedAuth.origin === origin) return cachedAuth.auth;
   const auth = createAuth(env, request);
   cachedAuth = { env, origin, auth };
   return auth;
 }
 
-function trusted(origin: string | null, env: Env, request: Request) {
-  if (!origin) return false;
-  try {
-    const u = new URL(origin);
-    const { url, root } = siteFrom(env, request);
-    return (
-      u.origin === url.origin ||
-      Boolean(root && u.protocol === "https:" && onRootDomain(u.hostname, root))
-    );
-  } catch {
-    return false;
-  }
-}
-
-function copySetCookies(from: Headers, to: Headers) {
-  const cookies =
-    typeof from.getSetCookie === "function" ? from.getSetCookie() : [];
-  for (const cookie of cookies) to.append("Set-Cookie", cookie);
-}
-
-function cors(response: Response, request: Request, env: Env) {
-  const origin = request.headers.get("Origin");
-  const sameOrigin = origin === new URL(request.url).origin;
-  if (!origin || sameOrigin || !trusted(origin, env, request)) return response;
-
-  const headers = new Headers(response.headers);
-  headers.delete("Set-Cookie");
-  copySetCookies(response.headers, headers);
-  headers.set("Access-Control-Allow-Origin", origin);
-  headers.set("Access-Control-Allow-Credentials", "true");
-  headers.set("Vary", "Origin");
-
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-}
-
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    const site = siteFrom(env, request);
+    const origin = originFor(env, request);
 
     if (url.pathname === "/health") {
       return Response.json({
         ok: true,
-        issuer: issuerFor(site.origin),
+        issuer: origin,
       });
     }
 
     if (url.pathname === "/api/public-config" && request.method === "GET") {
       return Response.json({
-        rootDomain: site.root ?? site.host,
         providers: providersFor(env),
       });
     }
@@ -272,25 +131,7 @@ export default {
       url.pathname === "/.well-known/oauth-authorization-server" ||
       url.pathname.startsWith("/.well-known/oauth-authorization-server/")
     ) {
-      if (request.method === "OPTIONS") {
-        const origin = request.headers.get("Origin");
-        if (!trusted(origin, env, request)) {
-          return new Response(null, { status: 403 });
-        }
-        return new Response(null, {
-          status: 204,
-          headers: {
-            "Access-Control-Allow-Origin": origin!,
-            "Access-Control-Allow-Credentials": "true",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Max-Age": "86400",
-            Vary: "Origin",
-          },
-        });
-      }
-
-      return cors(await authFor(env, request).handler(request), request, env);
+      return authFor(env, request).handler(request);
     }
 
     if (url.pathname.startsWith("/api/")) {

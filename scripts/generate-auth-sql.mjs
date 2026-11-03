@@ -15,6 +15,7 @@ const auth = betterAuth({
   database: db,
   secret: "cli-placeholder-secret-at-least-32-chars!!",
   baseURL: "https://auth.example.com",
+  disabledPaths: ["/token"],
   socialProviders: {
     google: { clientId: "cli", clientSecret: "cli" },
     microsoft: { clientId: "cli", clientSecret: "cli", tenantId: "common" },
@@ -28,11 +29,7 @@ const auth = betterAuth({
         rotationInterval: 60 * 60 * 24 * 30,
         gracePeriod: 60 * 60 * 24 * 30,
       },
-      jwt: {
-        issuer,
-        audience: issuer,
-        expirationTime: "15m",
-      },
+      jwt: { issuer },
     }),
     oauthProvider({
       loginPage: "/",

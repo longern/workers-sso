@@ -1,7 +1,8 @@
+import { ActionButton } from "../components/ActionButton";
 import { AppIdentity, AccountIdentity } from "../components/Identity";
 import { ProviderIcon } from "../components/Icons";
 import { useI18n } from "../components/I18nProvider";
-import { callbackURL, follow } from "../lib/auth";
+import { follow } from "../lib/auth";
 import { clientIdentity, type Client } from "../lib/presentation";
 import type { Config, RunAction, Session } from "../lib/types";
 
@@ -16,17 +17,17 @@ export function LoginPage({ config, client, session, run, switchAccount }: {
     {session && client ? (
       <div class="continue-account">
         <AccountIdentity user={session.user} />
-        <button type="button" class="primary full" onClick={() => void run(() => follow("/oauth2/continue", {}))}>
-          {t("continueAs", { name: session.user.name || session.user.email || session.user.id })}
-        </button>
-        <button type="button" class="text-button" onClick={() => void run(switchAccount)}>{t("switchAccount")}</button>
+        <ActionButton className="primary full" run={run} onAction={() => follow("/oauth2/continue", {})}
+          label={t("continueAs", { name: session.user.name || session.user.email || session.user.id })} />
+        <ActionButton className="text-button" run={run} onAction={switchAccount} label={t("switchAccount")} />
       </div>
     ) : (
       <div class="provider-buttons">{config.providers.map(provider => (
-        <button key={provider.id} type="button" class="provider-button"
-          onClick={() => void run(() => follow("/sign-in/social", { provider: provider.id, callbackURL: callbackURL(config) }))}>
+        <ActionButton key={provider.id} className="provider-button" run={run}
+          onAction={() => follow("/sign-in/social", { provider: provider.id, callbackURL: location.origin + "/" })}
+          label={t("with", { provider: provider.label })}>
           <ProviderIcon id={provider.id} /><span>{t("with", { provider: provider.label })}</span>
-        </button>
+        </ActionButton>
       ))}</div>
     )}
     {!config.providers.length && !session && <p class="muted">{t("noProviders")}</p>}

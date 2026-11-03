@@ -18,11 +18,21 @@ export function App() {
   const [revision, setRevision] = useState(0);
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(oauthError);
-  const [revoked, setRevoked] = useState(false);
   const inFlight = useRef(false);
   const mounted = useRef(true);
-  const reload = () => setRevision(value => value + 1);
+  const reload = () => {
+    const url = new URL(location.href);
+    url.searchParams.delete("error");
+    url.searchParams.delete("error_description");
+    if (url.href !== location.href) history.replaceState(null, "", url);
+    setRevision(value => value + 1);
+  };
+  const onRevoked = (clientId: string) => setState(previous => {
+    if (previous.status !== "ready" || previous.data.page !== "account") return previous;
+    return { status: "ready", data: { ...previous.data,
+      grants: previous.data.grants?.filter(entry => entry.client.client_id !== clientId) ?? null,
+    } };
+  });
 
   useEffect(() => {
     mounted.current = true;
@@ -31,6 +41,11 @@ export function App() {
 
   useEffect(() => {
     let active = true;
+    const failure = oauthError();
+    if (failure) {
+      setState({ status: "error", error: new Error(failure) });
+      return;
+    }
     setState({ status: "loading" });
     loadPage().then(
       data => { if (active) setState({ status: "ready", data }); },
@@ -43,12 +58,8 @@ export function App() {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
-    setError("");
-    setRevoked(false);
     try {
       await task();
-    } catch (error) {
-      if (mounted.current) setError(error instanceof Error ? error.message : t("failed"));
     } finally {
       inFlight.current = false;
       if (mounted.current) setBusy(false);
@@ -65,13 +76,12 @@ export function App() {
   useEffect(() => { document.title = title; }, [title]);
 
   return (
-    <Shell page={page} busy={busy} error={Boolean(error)}
-      message={busy ? t("working") : error || (revoked ? t("revoked") : "")}>
+    <Shell page={page} busy={busy}>
       {state.status === "loading" && <p class="muted" role="status">{t("loading")}</p>}
       {state.status === "error" && <ErrorPage error={state.error} retry={reload} />}
       {data?.page === "login" && <LoginPage {...data} run={run} switchAccount={switchAccount} />}
       {data?.page === "consent" && <ConsentPage {...data} run={run} switchAccount={switchAccount} />}
-      {data?.page === "account" && <AccountPage {...data} run={run} reload={reload} onRevoked={() => setRevoked(true)} />}
+      {data?.page === "account" && <AccountPage {...data} run={run} reload={reload} onRevoked={onRevoked} />}
     </Shell>
   );
 }

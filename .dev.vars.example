@@ -1,5 +1,4 @@
-# Optional overrides. Leave unset to derive from the request host:
-# ROOT_DOMAIN=example.com
+# Optional canonical origin. Leave unset to derive from the request host:
 # BETTER_AUTH_URL=http://localhost:8787
 BETTER_AUTH_SECRET=replace-with-at-least-32-random-characters
 GOOGLE_CLIENT_ID=

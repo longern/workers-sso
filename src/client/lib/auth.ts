@@ -22,14 +22,6 @@ export async function follow(path: string, body: Record<string, unknown>) {
   location.assign(url.href);
 }
 
-export function callbackURL(config: Config) {
-  const requested = new URLSearchParams(location.search).get("callbackURL");
-  const url = webUrl(requested ?? undefined);
-  const allowed = url?.protocol === "https:" &&
-    (url.hostname === config.rootDomain || url.hostname.endsWith(`.${config.rootDomain}`));
-  return allowed ? url.href : location.origin + "/";
-}
-
 export function oauthError() {
   const params = new URLSearchParams(location.search);
   return params.get("error_description") || params.get("error") || "";

@@ -29,7 +29,7 @@ function authorize(extra = {}) {
 function sessionCookie() {
   const token = 'test-session-token';
   const signed = token + '.' + createHmac('sha256', secret).update(token).digest('base64');
-  return '__Secure-better-auth.session_token=' + encodeURIComponent(signed);
+  return '__Secure-workers-sso.session_token=' + encodeURIComponent(signed);
 }
 async function request(url, init = {}) {
   return mf.dispatchFetch(url, { redirect: 'manual', ...init, headers: { accept: 'text/html', ...init.headers } });
@@ -226,4 +226,50 @@ test('account consent management is session scoped', async () => {
   assert.equal(revoked.status, 200);
   const remaining = await (await request(issuer + '/api/auth/oauth2/get-consents', { headers: { cookie: sessionCookie() } })).json();
   assert.ok(!remaining.some(grant => grant.id === grants[0].id));
+});
+
+test('legacy convenience tokens are disabled and config no longer exposes a parent domain', async () => {
+  for (const path of ['/api/auth/token', '/api/auth/token/']) {
+    const response = await request(issuer + path, { headers: { cookie: sessionCookie() } });
+    assert.equal(response.status, 404);
+  }
+  const config = await (await request(issuer + '/api/public-config')).json();
+  assert.deepEqual(Object.keys(config), ['providers']);
+});
+
+test('shared-cookie integration no longer grants cross-subdomain API access', async () => {
+  const response = await request(issuer + '/api/auth/get-session', {
+    headers: { cookie: sessionCookie(), origin: 'https://game.example.com' },
+  });
+  assert.equal(response.headers.get('access-control-allow-origin'), null);
+  assert.equal(response.headers.get('access-control-allow-credentials'), null);
+  const preflight = await request(issuer + '/api/auth/sign-in/social', {
+    method: 'OPTIONS', headers: {
+      origin: 'https://game.example.com', 'access-control-request-method': 'POST',
+    },
+  });
+  assert.equal(preflight.headers.get('access-control-allow-credentials'), null);
+  const signin = await request(issuer + '/api/auth/sign-in/social', {
+    method: 'POST', headers: { cookie: sessionCookie(), origin: 'https://game.example.com', 'content-type': 'application/json' },
+    body: JSON.stringify({ provider: 'google', callbackURL: issuer + '/' }),
+  });
+  assert.equal(signin.status, 403);
+});
+
+test('new cookies are host-only and the old shared cookie name is ignored', async () => {
+  const oldCookie = sessionCookie().replace('workers-sso.session_token', 'better-auth.session_token');
+  const oldSession = await request(issuer + '/api/auth/get-session', { headers: { cookie: oldCookie } });
+  assert.equal(await oldSession.json(), null);
+  const session = await request(issuer + '/api/auth/get-session', { headers: { cookie: sessionCookie() } });
+  assert.equal((await session.json()).user.id, 'test-user');
+  const signin = await post('/api/auth/sign-in/social', { provider: 'google', callbackURL: issuer + '/' }, '');
+  assert.equal(signin.status, 200);
+  const cookies = signin.headers.getSetCookie();
+  assert.ok(cookies.length > 0);
+  for (const cookie of cookies) {
+    assert.doesNotMatch(cookie, /(?:^|;)\s*Domain=/i);
+    assert.match(cookie, /(?:^|;)\s*Secure(?:;|$)/i);
+    assert.match(cookie, /(?:^|;)\s*HttpOnly(?:;|$)/i);
+    assert.match(cookie, /SameSite=Lax/i);
+  }
 });
